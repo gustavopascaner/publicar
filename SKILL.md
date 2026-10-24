@@ -71,7 +71,7 @@ Programado/Publicado; en Windows, la planilla `estado-publicaciones.csv` de la c
 - "mové …" → `editar_publicacion` con `scheduledAt` nueva (conserva texto y medios).
 - "cambiá el texto …" → `editar_publicacion` con `caption`.
 - "cancelá / sacala" → `pasar_a_borrador` (no se pierde). **Borrar** (`borrar_publicacion`) solo si lo pide así, y
-  confirmar antes; si ya estaba publicada, aclarar que no se borra de Instagram.
+  confirmar antes; las ya publicadas no se pueden borrar (la app conserva el registro).
 - "qué publiqué / qué falta publicar de esta carpeta", "marcá esta carpeta" → `estado_archivo` con la carpeta. Mostrar
   tabla corta: archivo · estado · cuenta · fecha (y enlace si está publicado). Las marcas se actualizan al consultar: una
   programada que ya salió pasa a Publicado recién en la próxima consulta.
