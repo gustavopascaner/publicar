@@ -155,7 +155,7 @@ export const TOOLS = [
   },
   {
     name: "borrar_publicacion",
-    description: "Borra una publicación de la app (si ya se publicó, NO la borra de Instagram).",
+    description: "Borra de la app una publicación no publicada (borrador, programada, en cola o con error). Las publicadas no se pueden borrar: queda el registro.",
     inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
     run: (api, a) => api.del(`/posts/${encodeURIComponent(a.id)}`),
   },
