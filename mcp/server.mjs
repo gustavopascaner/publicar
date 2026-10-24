@@ -10,9 +10,11 @@
  *
  * Protocolo: JSON-RPC 2.0, un mensaje por línea en stdin/stdout (los registros van a stderr).
  */
+import { execFile as execFileCb } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -30,7 +32,8 @@ const INSTRUCTIONS = `Programador de publicaciones de Instagram (cuentas profesi
 - Empezá con info_api para ver la zona horaria de la app y la hora actual: las fechas sin zona ("2026-11-03T18:00") se interpretan en esa zona.
 - Flujo típico: listar_cuentas → subir_medio (archivo local o URL) → validar_publicacion → crear_publicacion (mode "schedule" con scheduledAt, "queue" para el próximo horario libre de la cola, "now" para publicar ya o "draft").
 - Publicar es irreversible: confirmá con el usuario cuenta, texto, medios y fecha antes de usar mode "now" o "schedule" si no lo pidió explícitamente.
-- Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video.`;
+- Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video.
+- Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.`;
 
 const id = { type: "string", description: "Identificador (uuid)." };
 const mediaItems = {
@@ -182,6 +185,22 @@ export const TOOLS = [
     run: (api, a, deps) => uploadMedia(api, a, deps),
   },
   {
+    name: "estado_archivo",
+    description:
+      "Dice si imágenes o videos de la computadora (un archivo o todos los de una carpeta, sin subcarpetas) ya se subieron y en qué publicaciones están: Publicado (con enlace), Programado, Con error, Borrador, Subido sin usar o No subido. Los reconoce por su huella (SHA-256) aunque los hayan renombrado o movido. Con marcar (por defecto sí) deja el estado a la vista: etiquetas de colores del Finder en macOS y la planilla estado-publicaciones.csv en la carpeta en Windows u otros sistemas.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Ruta absoluta de un archivo o de una carpeta." },
+        marcar: { type: "boolean", description: "Etiquetas del Finder (macOS) o planilla (otros). Por defecto true." },
+        planilla: { type: "boolean", description: "Escribir también estado-publicaciones.csv en macOS (en Windows siempre se escribe si marcar=true)." },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    run: (api, a, deps) => fileStatus(api, a, deps),
+  },
+  {
     name: "listar_campanas",
     description: "Campañas (para campaignId) y etiquetas existentes.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -266,6 +285,311 @@ async function uploadMedia(api, args, { readFile = fs.readFile, stat = fs.stat }
   return { media: last.media };
 }
 
+// ---------- Estado de archivos locales (estado_archivo) ----------
+
+/** Máximo de archivos por consulta (igual que la API). */
+export const STATUS_MAX_FILES = 500;
+export const STATUS_CSV = "estado-publicaciones.csv";
+
+/** Estado resumido (API) → etiqueta a mostrar y color de etiqueta del Finder (1 gris, 2 verde, 5 amarillo, 6 rojo). */
+export const STATE_LABELS = {
+  published: { label: "Publicado", color: 2 },
+  publishing: { label: "Programado", color: 5 },
+  scheduled: { label: "Programado", color: 5 },
+  error: { label: "Con error", color: 6 },
+  draft: { label: "Borrador", color: 1 },
+  uploaded: { label: "Subido sin usar", color: null },
+  not_uploaded: { label: "No subido", color: null },
+};
+/** Etiquetas que pone el MCP: solo estas se reemplazan; las demás etiquetas del archivo se conservan. */
+export const OWN_TAGS = ["Publicado", "Programado", "Con error", "Borrador"];
+
+export function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash("sha256");
+    createReadStream(file)
+      .on("data", (c) => h.update(c))
+      .on("end", () => resolve(h.digest("hex")))
+      .on("error", reject);
+  });
+}
+
+const execFileP = (cmd, args) =>
+  new Promise((resolve, reject) => execFileCb(cmd, args, { maxBuffer: 1024 * 1024 }, (e, stdout) => (e ? reject(e) : resolve(String(stdout)))));
+
+// Etiquetas del Finder = atributo extendido com.apple.metadata:_kMDItemUserTags: un plist binario con un arreglo de
+// textos "Nombre\nColor". Se lee y escribe con /usr/bin/xattr (viene con macOS).
+const TAGS_XATTR = "com.apple.metadata:_kMDItemUserTags";
+
+/** Plist binario (bplist00) → arreglo de textos, o null si no es eso. */
+export function decodeTagPlist(buf) {
+  try {
+    if (buf.length < 40 || buf.subarray(0, 8).toString("latin1") !== "bplist00") return null;
+    const t = buf.subarray(buf.length - 32);
+    const offSize = t[6];
+    const refSize = t[7];
+    const numObjects = Number(t.readBigUInt64BE(8));
+    const top = Number(t.readBigUInt64BE(16));
+    const tableAt = Number(t.readBigUInt64BE(24));
+    const readUInt = (at, size) => buf.readUIntBE(at, size);
+    const offsetOf = (i) => readUInt(tableAt + i * offSize, offSize);
+    // Largo de un objeto: en el marcador (0–14) o, si es 15, un entero a continuación.
+    const lengthAt = (at) => {
+      const low = buf[at] & 0x0f;
+      if (low !== 0x0f) return [low, at + 1];
+      const size = 1 << (buf[at + 1] & 0x0f);
+      return [readUInt(at + 2, size), at + 2 + size];
+    };
+    const readString = (i) => {
+      const at = offsetOf(i);
+      const kind = buf[at] >> 4;
+      const [n, start] = lengthAt(at);
+      if (kind === 0x5) return buf.subarray(start, start + n).toString("latin1");
+      if (kind === 0x6) return Buffer.from(buf.subarray(start, start + n * 2)).swap16().toString("utf16le");
+      throw new Error("no es texto");
+    };
+    if (top >= numObjects) return null;
+    const at = offsetOf(top);
+    if (buf[at] >> 4 !== 0xa) return null;
+    const [n, start] = lengthAt(at);
+    const out = [];
+    for (let k = 0; k < n; k++) out.push(readString(readUInt(start + k * refSize, refSize)));
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** Arreglo de textos → plist binario (bplist00). */
+export function encodeTagPlist(tags) {
+  const lenMarker = (kind, n) => {
+    if (n < 15) return Buffer.from([(kind << 4) | n]);
+    if (n < 256) return Buffer.from([(kind << 4) | 0xf, 0x10, n]);
+    const b = Buffer.alloc(4);
+    b[0] = (kind << 4) | 0xf;
+    b[1] = 0x11;
+    b.writeUInt16BE(n, 2);
+    return b;
+  };
+  const refSize = tags.length + 1 < 256 ? 1 : 2;
+  const objects = [];
+  const refs = Buffer.alloc(tags.length * refSize);
+  tags.forEach((_, i) => refs.writeUIntBE(i + 1, i * refSize, refSize));
+  objects.push(Buffer.concat([lenMarker(0xa, tags.length), refs]));
+  for (const tag of tags) {
+    if (/^[\x00-\x7f]*$/.test(tag)) objects.push(Buffer.concat([lenMarker(0x5, tag.length), Buffer.from(tag, "latin1")]));
+    else {
+      const u = Buffer.from(tag, "utf16le").swap16();
+      objects.push(Buffer.concat([lenMarker(0x6, u.length / 2), u]));
+    }
+  }
+  const header = Buffer.from("bplist00", "latin1");
+  const offsets = [];
+  let pos = header.length;
+  for (const o of objects) {
+    offsets.push(pos);
+    pos += o.length;
+  }
+  const offSize = pos < 256 ? 1 : pos < 65536 ? 2 : 4;
+  const table = Buffer.alloc(offsets.length * offSize);
+  offsets.forEach((o, i) => table.writeUIntBE(o, i * offSize, offSize));
+  const trailer = Buffer.alloc(32);
+  trailer[6] = offSize;
+  trailer[7] = refSize;
+  trailer.writeBigUInt64BE(BigInt(objects.length), 8);
+  trailer.writeBigUInt64BE(0n, 16);
+  trailer.writeBigUInt64BE(BigInt(pos), 24);
+  return Buffer.concat([header, ...objects, table, trailer]);
+}
+
+/** Etiquetas nuevas: las ajenas tal cual + la del estado (si tiene). Las propias viejas se sacan. */
+export function mergeTags(current, state) {
+  const own = new Set(OWN_TAGS);
+  const kept = current.filter((t) => !own.has(t.split("\n")[0]));
+  const s = STATE_LABELS[state];
+  return s?.color ? [...kept, `${s.label}\n${s.color}`] : kept;
+}
+
+/** Pone la etiqueta del estado a un archivo (macOS). Devuelve un aviso si no pudo, o null. */
+export async function setFinderTag(file, state, exec = execFileP) {
+  let current = [];
+  try {
+    const hex = (await exec("/usr/bin/xattr", ["-px", TAGS_XATTR, file])).replace(/\s+/g, "");
+    current = decodeTagPlist(Buffer.from(hex, "hex"));
+    if (!current) return `${path.basename(file)}: no se entendieron sus etiquetas actuales; no se tocaron.`;
+  } catch {
+    current = []; // sin etiquetas todavía
+  }
+  const next = mergeTags(current, state);
+  if (next.length === current.length && next.every((t, i) => t === current[i])) return null;
+  try {
+    if (next.length === 0) await exec("/usr/bin/xattr", ["-d", TAGS_XATTR, file]);
+    else await exec("/usr/bin/xattr", ["-wx", TAGS_XATTR, encodeTagPlist(next).toString("hex"), file]);
+    return null;
+  } catch (e) {
+    return `${path.basename(file)}: no se pudo poner la etiqueta (${e?.message ?? e}).`;
+  }
+}
+
+// Planilla para Excel: UTF-8 con BOM, separador ";" (Excel en español), todo entre comillas y guarda de fórmulas.
+const CSV_HEADER = ["Archivo", "Estado", "Publicaciones", "Enlaces", "Revisado"];
+const csvCell = (v) => {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+};
+export const csvLine = (cells) => cells.map(csvCell).join(";");
+
+/** Lee una planilla escrita por csvLine (campos entre comillas, ";"). */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const src = text.replace(/^﻿/, "");
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quoted) {
+      if (c === '"' && src[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ";") {
+      row.push(cell);
+      cell = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && src[i + 1] === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+const POST_STATUS_LABELS = {
+  draft: "Borrador",
+  scheduled: "Programada",
+  queued: "En cola",
+  publishing: "Publicando",
+  published: "Publicada",
+  retrying: "Reintentando",
+  failed: "Falló",
+  needs_reconnect: "Requiere reconexión",
+};
+// Empieza con letra (no con "@"), así Excel no lo toma como fórmula.
+const postSummary = (p) => {
+  const when = p.status === "published" ? p.publishedAtLocal : p.scheduledAtLocal;
+  return `${POST_STATUS_LABELS[p.status] ?? p.status} en @${p.account ?? "?"}${when ? ` el ${when.replace("T", " ")}` : ""}${p.remoteDeleted ? " (borrada de Instagram)" : ""}`;
+};
+
+/** Fila de la planilla para un archivo. */
+export function csvRow(f, checkedLocal) {
+  return [f.name, f.estado, f.posts.map(postSummary).join(" | "), f.posts.map((p) => p.platformUrl).filter(Boolean).join(" "), checkedLocal];
+}
+
+/** Planilla nueva = filas viejas de otros archivos + filas de esta consulta, ordenadas por nombre. */
+export function mergeCsv(existingText, rows) {
+  // Las celdas viejas ya vienen con la guarda de fórmulas ("'" adelante): se comparan sin ella y se escriben tal cual.
+  const unguard = (s) => s.replace(/^'(?=[=+\-@\t\r])/, "");
+  const names = new Set(rows.map((r) => r[0]));
+  const old = existingText ? parseCsv(existingText).slice(1).filter((r) => r.length >= 2 && !names.has(unguard(r[0]))) : [];
+  const all = [...old, ...rows.map((r) => r.map((c) => String(c ?? "")))].sort((a, b) => unguard(a[0]).localeCompare(unguard(b[0]), "es"));
+  return `﻿${[CSV_HEADER, ...all].map(csvLine).join("\r\n")}\r\n`;
+}
+
+const nowLocalText = (d = new Date()) => {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+async function fileStatus(api, args, deps = {}) {
+  const {
+    stat = fs.stat,
+    readdir = fs.readdir,
+    hashFile = sha256File,
+    platform = process.platform,
+    tagFile = setFinderTag,
+    readText = (p) => fs.readFile(p, "utf8"),
+    writeText = (p, t) => fs.writeFile(p, t, "utf8"),
+    now = new Date(),
+  } = deps;
+  if (!args.path) throw new ToolError("Indicá path (un archivo o una carpeta).");
+  const target = path.resolve(args.path);
+  const st = await stat(target).catch(() => null);
+  if (!st) throw new ToolError(`No existe ${target}.`);
+
+  const isMedia = (n) => UPLOAD_EXTENSIONS.includes(path.extname(n).toLowerCase()) && !n.startsWith(".");
+  let folder;
+  let files;
+  const avisos = [];
+  if (st.isDirectory()) {
+    folder = target;
+    const names = (await readdir(target)).filter(isMedia).sort((a, b) => a.localeCompare(b, "es"));
+    if (names.length > STATUS_MAX_FILES) avisos.push(`La carpeta tiene ${names.length} imágenes o videos: se revisaron los primeros ${STATUS_MAX_FILES}.`);
+    files = names.slice(0, STATUS_MAX_FILES).map((n) => path.join(target, n));
+  } else {
+    if (!isMedia(path.basename(target))) throw new ToolError(`Solo se revisan imágenes o videos (${UPLOAD_EXTENSIONS.join(", ")}).`);
+    folder = path.dirname(target);
+    files = [target];
+  }
+  if (files.length === 0) return { carpeta: folder, files: [], resumen: {}, marcado: null, avisos: ["No hay imágenes ni videos en esa carpeta."] };
+
+  const local = [];
+  for (const f of files) {
+    const s = await stat(f).catch(() => null);
+    if (!s || !s.isFile()) continue;
+    local.push({ path: f, name: path.basename(f), size: s.size, sha256: await hashFile(f) });
+  }
+  const r = await api.post("/media/status", { files: local.map(({ sha256, name, size }) => ({ sha256, name, size })) });
+  const out = local.map((l, i) => {
+    const s = r.files[i];
+    return {
+      path: l.path,
+      name: l.name,
+      estado: STATE_LABELS[s.state]?.label ?? s.state,
+      state: s.state,
+      ...(s.match === "name_size" ? { reconocidoPor: "nombre y tamaño (subido antes de la huella)" } : {}),
+      mediaIds: s.mediaIds,
+      posts: s.posts,
+    };
+  });
+  const resumen = {};
+  for (const f of out) resumen[f.estado] = (resumen[f.estado] ?? 0) + 1;
+
+  let marcado = null;
+  if (args.marcar !== false) {
+    const marks = [];
+    if (platform === "darwin") {
+      for (const f of out) {
+        const problem = await tagFile(f.path, f.state);
+        if (problem) avisos.push(problem);
+      }
+      marks.push("etiquetas del Finder");
+    }
+    if (platform !== "darwin" || args.planilla) {
+      const csvPath = path.join(folder, STATUS_CSV);
+      const old = await readText(csvPath).catch(() => "");
+      const checked = nowLocalText(now);
+      try {
+        await writeText(csvPath, mergeCsv(old, out.map((f) => csvRow(f, checked))));
+        marks.push(`planilla ${csvPath}`);
+      } catch (e) {
+        avisos.push(`No se pudo escribir ${csvPath} (${e?.code ?? e?.message ?? e}). Si está abierta en Excel, cerrala y volvé a consultar.`);
+      }
+    }
+    marcado = marks.join(" y ") || null;
+  }
+  return { carpeta: folder, files: out, resumen, marcado, avisos };
+}
+
 /** Problema de configuración (o null). La clave nunca viaja por http salvo a la propia máquina. */
 export function configProblem(baseUrl, apiKey) {
   if (!baseUrl) return "Falta PROGRAMADOR_URL (por ejemplo https://publicar.misterrobot.net).";
@@ -283,7 +607,7 @@ export function configProblem(baseUrl, apiKey) {
 }
 
 /** Arma el manejador de mensajes JSON-RPC. Devuelve la respuesta o null (notificaciones). */
-export function createHandler({ baseUrl, apiKey, fetchImpl, readFile, stat } = {}) {
+export function createHandler({ baseUrl, apiKey, fetchImpl, ...deps } = {}) {
   const problem = configProblem(baseUrl, apiKey);
   const api = problem ? null : createApi({ baseUrl, apiKey, fetchImpl });
   const reply = (msgId, result) => ({ jsonrpc: "2.0", id: msgId, result });
@@ -316,7 +640,7 @@ export function createHandler({ baseUrl, apiKey, fetchImpl, readFile, stat } = {
         if (!tool) return fail(msg.id, -32602, `Herramienta desconocida: ${params.name}`);
         if (problem) return reply(msg.id, { content: [{ type: "text", text: `Configuración incompleta: ${problem}` }], isError: true });
         try {
-          const result = await tool.run(api, params.arguments ?? {}, { readFile, stat });
+          const result = await tool.run(api, params.arguments ?? {}, deps);
           return reply(msg.id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
         } catch (e) {
           const text = e instanceof ToolError ? e.message : `Error inesperado: ${e?.message ?? e}`;
@@ -356,11 +680,12 @@ export function serveStdio(handle, { input = process.stdin, output = process.std
 }
 
 /** Lee la clave de un archivo (con `~` = carpeta personal). Vacío si no existe. */
-export function readKeyFile(file, home = process.env.HOME ?? "") {
+export function readKeyFile(file, home = os.homedir()) {
   if (!file) return "";
-  const resolved = file.startsWith("~/") ? path.join(home, file.slice(2)) : file;
+  const resolved = /^~[\\/]/.test(file) ? path.join(home, file.slice(2)) : file;
   try {
-    return readFileSync(resolved, "utf8").trim();
+    // Sin BOM ni espacios: en Windows algunos editores y PowerShell agregan un BOM al principio.
+    return readFileSync(resolved, "utf8").replace(/^\uFEFF/, "").trim();
   } catch {
     process.stderr.write(`[mcp] no se pudo leer la clave de ${resolved}\n`);
     return "";
