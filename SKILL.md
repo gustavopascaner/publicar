@@ -5,13 +5,14 @@ description: Programa, publica o gestiona publicaciones de Instagram en el Progr
 
 # /publicar — programar contenido en Instagram
 
-Hablarle a Gus en español rioplatense (voseo), corto. Todo pasa por las herramientas MCP `programador-instagram`
+Hablarle al usuario (Gus o alguien de su equipo) en español rioplatense (voseo), corto. Todo pasa por las herramientas MCP `programador-instagram`
 (`mcp__programador-instagram__*`): nunca tocar la base, la app ni Meta por otro lado.
 
 ## 0 · Herramientas disponibles
 - Si las herramientas `mcp__programador-instagram__*` no están cargadas: buscarlas con ToolSearch (`programador-instagram`).
-- Si no existen: el MCP no está conectado en esta sesión. Decirle a Gus que abra una sesión nueva; si sigue sin estar,
-  revisar `~/.claude.json` → `mcpServers.programador-instagram` y que exista `~/.config/programador-instagram/api-key`.
+- Si no existen: el MCP no está conectado en esta sesión. Que abra una sesión nueva; si sigue sin estar, revisar
+  `~/.claude.json` → `mcpServers.programador-instagram` y que exista `~/.config/programador-instagram/api-key`. La
+  instalación paso a paso está en el `README.md` de esta skill (el servidor es `mcp/server.mjs`, al lado de este archivo).
   **Nunca** pedirle la clave por chat ni imprimirla (si hay que guardarla: que la copie y diga "listo"; guardarla con
   `pbpaste` validando `^mrk_[A-Za-z0-9_-]{43}$`, sin mostrarla).
 - Primera llamada de cada uso: `info_api` → `nowLocal` y `timezone` (America/Argentina/Buenos_Aires). Con eso se
