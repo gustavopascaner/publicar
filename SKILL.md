@@ -34,6 +34,9 @@ Del texto de `/publicar …` sacar:
   - "ya", "ahora" → `now`;
   - sin fecha ni indicación → `draft` y avisar que quedó como borrador.
 - Extras: `altText` por imagen si lo da, `tags` internos, `campaignId` (`listar_campanas`), `shareToFeed` (Reels).
+- Portada del Reel (solo Reels): `coverOffsetMs` = segundo del video en ms ("portada en el segundo 4" → 4000), o
+  `coverMediaId` = id de una imagen subida con `subir_medio` (gana si van las dos). Sin ninguna, Instagram elige.
+  Al editar, `null` quita la portada. Mencionarla en el resumen de confirmación.
 
 ## 2 · Subir y validar
 0. Archivos locales: primero `estado_archivo` con cada archivo (o la carpeta). Si alguno ya figura **Publicado** o

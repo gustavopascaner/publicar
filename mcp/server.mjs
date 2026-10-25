@@ -32,7 +32,7 @@ const INSTRUCTIONS = `Programador de publicaciones de Instagram (cuentas profesi
 - Empezá con info_api para ver la zona horaria de la app y la hora actual: las fechas sin zona ("2026-11-03T18:00") se interpretan en esa zona.
 - Flujo típico: listar_cuentas → subir_medio (archivo local o URL) → validar_publicacion → crear_publicacion (mode "schedule" con scheduledAt, "queue" para el próximo horario libre de la cola, "now" para publicar ya o "draft").
 - Publicar es irreversible: confirmá con el usuario cuenta, texto, medios y fecha antes de usar mode "now" o "schedule" si no lo pidió explícitamente.
-- Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video.
+- Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video. Portada del Reel (opcional): coverOffsetMs (fotograma, en ms) o coverMediaId (imagen subida con subir_medio).
 - Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.`;
 
 const id = { type: "string", description: "Identificador (uuid)." };
@@ -44,6 +44,20 @@ const mediaItems = {
     properties: { mediaId: { type: "string" }, altText: { type: "string", description: "Texto alternativo (solo imágenes)." } },
     required: ["mediaId"],
     additionalProperties: false,
+  },
+};
+/** Portada del Reel (solo Reels; en imágenes y carruseles da error). null = la automática de Instagram. */
+const coverProps = {
+  coverOffsetMs: {
+    type: ["integer", "null"],
+    minimum: 0,
+    description:
+      "Solo Reels: portada = fotograma del video, en MILISEGUNDOS desde el inicio (ej. 3500 = 0:03.5; dentro de la duración del video). null la quita.",
+  },
+  coverMediaId: {
+    type: ["string", "null"],
+    description:
+      "Solo Reels: portada = imagen propia; id de una IMAGEN subida antes con subir_medio (JPEG, hasta 8 MB, ideal 9:16 1080x1920). Si se indican las dos, gana la imagen. null la quita.",
   },
 };
 const postProps = {
@@ -61,6 +75,7 @@ const postProps = {
   tags: { type: "array", items: { type: "string" }, description: "Etiquetas internas (no son hashtags)." },
   campaignId: { type: ["string", "null"], description: "Campaña (ver listar_campanas)." },
   shareToFeed: { type: "boolean", description: "Solo Reels: mostrarlo también en el feed (por defecto sí)." },
+  ...coverProps,
 };
 
 /** Definición de cada herramienta: esquema de entrada y cómo se traduce a la API REST. */
@@ -120,7 +135,7 @@ export const TOOLS = [
   {
     name: "validar_publicacion",
     description: "Revisa texto y medios con las reglas de Instagram sin guardar nada. Devuelve errores (bloquean) y advertencias.",
-    inputSchema: { type: "object", properties: { caption: postProps.caption, media: mediaItems }, additionalProperties: false },
+    inputSchema: { type: "object", properties: { caption: postProps.caption, media: mediaItems, ...coverProps }, additionalProperties: false },
     run: (api, a) => api.post("/posts/validate", a),
   },
   {
