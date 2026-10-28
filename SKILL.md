@@ -34,9 +34,27 @@ Del texto de `/publicar …` sacar:
   - "ya", "ahora" → `now`;
   - sin fecha ni indicación → `draft` y avisar que quedó como borrador.
 - Extras: `altText` por imagen si lo da, `tags` internos, `campaignId` (`listar_campanas`), `shareToFeed` (Reels).
-- Portada del Reel (solo Reels): `coverOffsetMs` = segundo del video en ms ("portada en el segundo 4" → 4000), o
-  `coverMediaId` = id de una imagen subida con `subir_medio` (gana si van las dos). Sin ninguna, Instagram elige.
-  Al editar, `null` quita la portada. Mencionarla en el resumen de confirmación.
+- **Portada (obligatoria: siempre se elige una al publicar o programar, también `draft` y `queue`)**:
+  - **Reel**: mandar siempre `coverOffsetMs` (segundo del video en ms: "portada en el segundo 4" → 4000) o
+    `coverMediaId` (id de una imagen subida con `subir_medio`; gana si van las dos). Nunca dejar que Instagram elija.
+    Si Gus indica la portada (segundo o imagen), usar esa. Si no, elegirla vos: ver «Elegir la portada» abajo.
+    Al editar, `null` quita la portada (no hacerlo salvo que lo pida).
+  - **Imagen / carrusel**: la portada es la primera imagen. Elegir cuál va primera: respetar el orden que dio Gus; si no
+    dio orden, elegir la mejor como portada y ordenar el resto por nombre. Si Gus dio un orden y otra imagen sería
+    claramente mejor portada, no reordenar: sugerirlo en una línea.
+  - Mencionar siempre la portada elegida en el resumen de confirmación (y en el informe si no hubo confirmación).
+
+### Elegir la portada (Reels sin portada indicada)
+1. `ffprobe` para la duración; sacar 6–8 cuadros repartidos entre el 5 % y el 90 % del video con ffmpeg
+   (`ffmpeg -ss <s> -i video -frames:v 1 -vf scale=540:-2 <scratchpad>/cuadro_<s>.jpg`), en la carpeta temporal de la
+   sesión, nunca junto al video original.
+2. Mirar los cuadros con Read y elegir el mejor: cara nítida y expresiva (ojos abiertos, sin gesto a medio hablar), buena
+   luz, sin desenfoque de movimiento, encuadre limpio y que respete la zona segura del perfil (el centro 4:5 del 9:16
+   debe verse bien). Evitar el primer y último segundo y los cuadros con subtítulo cortado o transición. Si hay un
+   cuadro con título o gancho legible, preferirlo.
+3. Usar el segundo elegido como `coverOffsetMs` y decir en media línea cuál y por qué («portada en el seg. 3,2: te mira
+   a cámara y se lee el gancho»). Si no hay ffmpeg o falla la extracción, avisarlo y usar un punto razonable (~1 s o el
+   25 % del video) en lugar de dejarlo sin portada.
 
 ## 2 · Subir y validar
 0. Archivos locales: primero `estado_archivo` con cada archivo (o la carpeta). Si alguno ya figura **Publicado** o
@@ -44,6 +62,8 @@ Del texto de `/publicar …` sacar:
    Reconoce el archivo aunque lo hayan renombrado; `reconocidoPor: nombre y tamaño` = medio viejo, menos seguro.
 1. `subir_medio` por cada archivo (con `path` absoluto o `url`), en orden. Guardar los ids. Si uno falla (HEIC, GIF,
    WebM, formato raro), decir por qué y cómo convertirlo; no seguir con medios faltantes.
+1b. Reels: elegir la portada (ver «Elegir la portada») antes de validar; si va como imagen, subirla con `subir_medio`
+   y usar su id como `coverMediaId`.
 2. `validar_publicacion` con `caption` y `media`. Errores → corregir si es del texto (acortar, sacar hashtags) y
    mostrar el cambio; si es del medio (proporción, duración, códec), explicarlo y preguntar. Advertencias → mencionarlas
    en una línea.
@@ -53,6 +73,7 @@ Publicar es público e irreversible. Mostrar un resumen y esperar un sí:
 
 ```
 @cuenta · Carrusel (3 fotos) · jueves 30/10 18:00 (hora de Buenos Aires)
+Portada: foto 1 (nombre) · en Reels: «seg. 3,2 del video» o la imagen elegida
 Texto: «…» (primeras líneas)
 ```
 
@@ -61,7 +82,8 @@ Saltear la confirmación solo si el mensaje de Gus ya trae cuenta, medios, texto
 (cuenta · tipo · fecha · primeras palabras) y un solo sí.
 
 ## 4 · Crear e informar
-`crear_publicacion` (una llamada puede llevar varias cuentas en `accountIds` con el mismo contenido). Informar en 1–2
+`crear_publicacion` (una llamada puede llevar varias cuentas en `accountIds` con el mismo contenido). Si es un Reel,
+verificar que la llamada lleve `coverOffsetMs` o `coverMediaId`: no se crea un Reel sin portada. Informar en 1–2
 líneas: estado, `scheduledAtLocal`, y que se ve en https://publicar.misterrobot.net/publicaciones. Con `now`: esperar
 unos segundos, `ver_publicacion` y dar el `platformUrl` si ya está `published`; si `failed`, mostrar `lastError`.
 Si la API responde un error, contarlo con sus palabras (no reintentar a ciegas).
