@@ -33,7 +33,8 @@ const INSTRUCTIONS = `Programador de publicaciones de Instagram (cuentas profesi
 - Flujo típico: listar_cuentas → subir_medio (archivo local o URL) → validar_publicacion → crear_publicacion (mode "schedule" con scheduledAt, "queue" para el próximo horario libre de la cola, "now" para publicar ya o "draft").
 - Publicar es irreversible: confirmá con el usuario cuenta, texto, medios y fecha antes de usar mode "now" o "schedule" si no lo pidió explícitamente.
 - Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video. Portada del Reel (opcional): coverOffsetMs (fotograma, en ms) o coverMediaId (imagen subida con subir_medio).
-- Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.`;
+- Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.
+- Anuncios (solo si info_api devuelve adsEnabled=true): listar_cuentas_publicitarias → validar_campana_ads → crear_campana_ads (queda como borrador) → publicar_campana_ads (la crea en Meta EN PAUSA; con activate=true la activa al terminar y GASTA DINERO: confirmá siempre presupuesto, moneda y fechas con el usuario antes). Ubicaciones solo de Instagram. ver_campana_ads muestra estado y métricas; pausar_campana_ads la detiene.`;
 
 const id = { type: "string", description: "Identificador (uuid)." };
 const mediaItems = {
@@ -76,6 +77,82 @@ const postProps = {
   campaignId: { type: ["string", "null"], description: "Campaña (ver listar_campanas)." },
   shareToFeed: { type: "boolean", description: "Solo Reels: mostrarlo también en el feed (por defecto sí)." },
   ...coverProps,
+};
+
+/** Anuncios: campaña → conjuntos → anuncios (misma forma que POST /api/v1/ads/campaigns). */
+const adCampaignSchema = {
+  type: "object",
+  description: "Campaña publicitaria completa. Ubicaciones solo de Instagram.",
+  properties: {
+    id: { type: "string", description: "Para editar un borrador existente." },
+    adAccountId: { type: "string", description: "Cuenta publicitaria (ver listar_cuentas_publicitarias)." },
+    name: { type: "string" },
+    objective: { type: "string", enum: ["OUTCOME_AWARENESS", "OUTCOME_TRAFFIC", "OUTCOME_ENGAGEMENT", "OUTCOME_LEADS", "OUTCOME_SALES"] },
+    budgetMode: { type: "string", enum: ["campaign", "adset"], description: "campaign = presupuesto a nivel campaña (CBO); adset = por conjunto." },
+    dailyBudgetCents: { type: ["integer", "null"], description: "Presupuesto diario en la unidad mínima de la moneda (CBO)." },
+    lifetimeBudgetCents: { type: ["integer", "null"], description: "Presupuesto total (CBO; requiere endAt en los conjuntos)." },
+    specialAdCategories: { type: "array", items: { type: "string", enum: ["HOUSING", "EMPLOYMENT", "CREDIT", "ISSUES_ELECTIONS_POLITICS", "FINANCIAL_PRODUCTS_SERVICES"] } },
+    activate: { type: "boolean", description: "Activar al terminar de crear en Meta (por defecto false)." },
+    adSets: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          dailyBudgetCents: { type: ["integer", "null"] },
+          lifetimeBudgetCents: { type: ["integer", "null"] },
+          startAt: { type: ["string", "null"], description: "ISO con zona o local en la zona de la app." },
+          endAt: { type: ["string", "null"] },
+          optimizationGoal: { type: "string", enum: ["REACH", "IMPRESSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS", "POST_ENGAGEMENT", "THRUPLAY", "OFFSITE_CONVERSIONS", "CONVERSATIONS"] },
+          billingEvent: { type: "string", enum: ["IMPRESSIONS", "LINK_CLICKS", "THRUPLAY"] },
+          bidStrategy: { type: "string", enum: ["LOWEST_COST_WITHOUT_CAP", "LOWEST_COST_WITH_BID_CAP", "COST_CAP"] },
+          bidAmountCents: { type: ["integer", "null"] },
+          targeting: {
+            type: "object",
+            properties: {
+              ageMin: { type: "integer", minimum: 13, maximum: 65 },
+              ageMax: { type: "integer", minimum: 13, maximum: 65 },
+              genders: { type: "array", items: { type: "integer", enum: [1, 2] }, description: "Vacío = todos; 1 hombres, 2 mujeres." },
+              countries: { type: "array", items: { type: "string" }, description: "Códigos ISO de 2 letras (AR, UY)." },
+              regions: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" } }, required: ["key"] } },
+              cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" } }, required: ["key"] } },
+              interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id"] } },
+              customAudiences: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id"] } },
+              excludedCustomAudiences: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id"] } },
+              lookalikeAudiences: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id"] } },
+            },
+            additionalProperties: false,
+          },
+          instagramPositions: { type: "array", items: { type: "string", enum: ["stream", "story", "reels", "explore", "explore_home", "profile_feed", "ig_search"] } },
+          pixelId: { type: ["string", "null"] },
+          conversionEvent: { type: ["string", "null"], enum: ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATED_CHECKOUT", "CONTACT", "SCHEDULE", "SUBMIT_APPLICATION", "OTHER", null] },
+          ads: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                creativeType: { type: "string", enum: ["existing_post", "image", "video", "carousel"] },
+                postId: { type: ["string", "null"], description: "existing_post: id de una publicación PUBLICADA de esta app (listar_publicaciones status=published)." },
+                igMediaId: { type: ["string", "null"], description: "existing_post: id del media de Instagram si no está en la app." },
+                media: { type: "array", items: { type: "object", properties: { mediaId: { type: "string" }, headline: { type: "string" }, linkUrl: { type: ["string", "null"] } }, required: ["mediaId"] }, description: "image/video: 1; carousel: 2 a 10 (ids de la biblioteca; los videos necesitan miniatura)." },
+                primaryText: { type: "string" },
+                headline: { type: "string" },
+                description: { type: "string" },
+                callToAction: { type: ["string", "null"], description: "LEARN_MORE, SHOP_NOW, SIGN_UP, CONTACT_US, WHATSAPP_MESSAGE, NO_BUTTON…" },
+                linkUrl: { type: ["string", "null"] },
+              },
+              required: ["name", "creativeType"],
+            },
+          },
+        },
+        required: ["name", "optimizationGoal", "ads"],
+      },
+    },
+  },
+  required: ["adAccountId", "name", "objective", "adSets"],
 };
 
 /** Definición de cada herramienta: esquema de entrada y cómo se traduce a la API REST. */
@@ -220,6 +297,72 @@ export const TOOLS = [
     description: "Campañas (para campaignId) y etiquetas existentes.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     run: (api) => api.get("/campaigns"),
+  },
+  // ---------- Anuncios (Marketing API; solo con ADS_ENABLED en la app) ----------
+  {
+    name: "listar_cuentas_publicitarias",
+    description: "Cuentas publicitarias de Meta visibles para la clave, con moneda y la cuenta de Instagram que anuncia. usable=false: inactiva o sin cuenta de Instagram asignada.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    run: (api) => api.get("/ads/accounts"),
+  },
+  {
+    name: "listar_campanas_ads",
+    description: "Campañas publicitarias (anuncios de Meta). Estados: draft, publishing, active, paused, failed, archived. Trae gasto, impresiones y resultados.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        q: { type: "string", description: "Busca por nombre." },
+        adAccountId: { type: "string" },
+        status: { type: "string", description: "Uno o varios estados separados por coma." },
+        limit: { type: "integer", minimum: 1, maximum: 500 },
+      },
+      additionalProperties: false,
+    },
+    run: (api, a) => api.get("/ads/campaigns", a),
+  },
+  {
+    name: "ver_campana_ads",
+    description: "Detalle de una campaña publicitaria: conjuntos, anuncios, estado en Meta, problemas, gasto y métricas (vida útil y por día).",
+    inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
+    run: (api, a) => api.get(`/ads/campaigns/${encodeURIComponent(a.id)}`),
+  },
+  {
+    name: "validar_campana_ads",
+    description: "Revisa una campaña publicitaria completa (campaña → conjuntos → anuncios) sin guardar: objetivo, presupuesto, público, creatividades. Devuelve errores (bloquean) y advertencias.",
+    inputSchema: { type: "object", properties: { campaign: adCampaignSchema }, required: ["campaign"], additionalProperties: false },
+    run: (api, a) => api.post("/ads/campaigns/validate", a.campaign),
+  },
+  {
+    name: "crear_campana_ads",
+    description:
+      "Crea (o edita, con campaign.id) una campaña publicitaria como BORRADOR en la app: no se manda nada a Meta ni gasta. Importes en la unidad mínima de la moneda de la cuenta (ARS/USD: centavos). Después, publicar_campana_ads la crea en Meta.",
+    inputSchema: { type: "object", properties: { campaign: adCampaignSchema }, required: ["campaign"], additionalProperties: false },
+    run: (api, a) => api.post("/ads/campaigns", a.campaign),
+  },
+  {
+    name: "publicar_campana_ads",
+    description:
+      "Crea la campaña en Meta (campaña, conjuntos, creatividades y anuncios) en segundo plano. Todo nace EN PAUSA; con activate=true se activa al terminar y empieza a gastar dinero: confirmá antes con el usuario presupuesto, moneda y fechas. Sirve también para reintentar una campaña failed (no repite lo ya creado).",
+    inputSchema: { type: "object", properties: { id, activate: { type: "boolean", description: "Activar al terminar (gasta dinero). Por defecto false." } }, required: ["id"], additionalProperties: false },
+    run: (api, a) => api.post(`/ads/campaigns/${encodeURIComponent(a.id)}/publish`, { activate: a.activate === true }),
+  },
+  {
+    name: "pausar_campana_ads",
+    description: "Pausa en Meta una campaña activa (deja de gastar).",
+    inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
+    run: (api, a) => api.post(`/ads/campaigns/${encodeURIComponent(a.id)}/pause`, {}),
+  },
+  {
+    name: "activar_campana_ads",
+    description: "Activa en Meta una campaña en pausa: EMPIEZA A GASTAR. Confirmá antes con el usuario.",
+    inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
+    run: (api, a) => api.post(`/ads/campaigns/${encodeURIComponent(a.id)}/resume`, {}),
+  },
+  {
+    name: "actualizar_metricas_ads",
+    description: "Consulta a Meta el estado y las métricas (gasto, impresiones, alcance, clics, resultados) de una campaña ya creada.",
+    inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
+    run: (api, a) => api.post(`/ads/campaigns/${encodeURIComponent(a.id)}/refresh`, {}),
   },
 ];
 
