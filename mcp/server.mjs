@@ -327,6 +327,22 @@ export const TOOLS = [
     run: (api, a) => api.get(`/ads/campaigns/${encodeURIComponent(a.id)}`),
   },
   {
+    name: "buscar_segmentacion_ads",
+    description:
+      "Busca en Meta intereses (type=interest, q) o lugares (type=geo, q: país, región o ciudad) para la segmentación, o lista los públicos personalizados/similares (type=audiences) y píxeles (type=pixels) de una cuenta publicitaria. Devuelve ids/keys para usar en targeting.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        adAccountId: { type: "string" },
+        type: { type: "string", enum: ["interest", "geo", "audiences", "pixels"] },
+        q: { type: "string", description: "Texto a buscar (interest y geo; mínimo 2 letras)." },
+      },
+      required: ["adAccountId", "type"],
+      additionalProperties: false,
+    },
+    run: (api, a) => api.get("/ads/search", a),
+  },
+  {
     name: "validar_campana_ads",
     description: "Revisa una campaña publicitaria completa (campaña → conjuntos → anuncios) sin guardar: objetivo, presupuesto, público, creatividades. Devuelve errores (bloquean) y advertencias.",
     inputSchema: { type: "object", properties: { campaign: adCampaignSchema }, required: ["campaign"], additionalProperties: false },

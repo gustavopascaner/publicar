@@ -16,6 +16,22 @@ carpeta ya se publicaron**.
 Incluye `mcp/server.mjs`: el servidor MCP (stdio, sin dependencias, Node ≥ 20) que conecta Claude con la API de la app.
 Anda en macOS, Linux y Windows.
 
+## /anuncios — campañas publicitarias (opcional)
+
+La carpeta `anuncios/` trae una segunda skill, `/anuncios`, que usa el mismo servidor MCP para armar campañas
+publicitarias de Meta con ubicaciones **solo en Instagram** (promocionar una publicación ya publicada o una imagen /
+carrusel de la biblioteca): elige cuenta publicitaria, objetivo, presupuesto y público, valida, muestra el gasto
+estimado, pide confirmación y la crea **en pausa**; solo la activa si lo pedís. También pausa y muestra métricas.
+Requiere que un administrador tenga habilitada la sección Anuncios en la app (`ADS_ENABLED`).
+
+```
+/anuncios promocioná el post del lunes de @cuenta con ARS 3000 por día durante una semana
+/anuncios campaña de tráfico a https://… para @cuenta, mujeres 25-45 de Rosario, USD 10 por día
+/anuncios cómo va la campaña de turnos
+```
+
+Para que Claude la vea, hay que enlazarla a la carpeta de skills (paso 3b de la instalación).
+
 ## Qué está publicado
 
 La app reconoce cada archivo por su **huella** (SHA-256), así que lo encuentra aunque lo hayas renombrado o movido de
@@ -63,6 +79,12 @@ sola vez), pegala en la terminal y apretá Enter. No se ve mientras la pegás: e
 claude mcp add programador-instagram --scope user --env PROGRAMADOR_URL=https://publicar.misterrobot.net --env PROGRAMADOR_API_KEY_FILE=$HOME/.config/programador-instagram/api-key -- node $HOME/.claude/skills/publicar/mcp/server.mjs
 ```
 
+**3b. (Opcional) Habilitá `/anuncios`**
+
+```bash
+ln -sfn ~/.claude/skills/publicar/anuncios ~/.claude/skills/anuncios
+```
+
 **4. Probá** (ver [Probar](#probar)).
 
 ## Instalación en Windows (PowerShell)
@@ -90,6 +112,12 @@ Ctrl+V; se ven asteriscos) y apretá Enter. El archivo queda solo con permisos p
 
 ```powershell
 claude mcp add programador-instagram --scope user --env PROGRAMADOR_URL=https://publicar.misterrobot.net --env "PROGRAMADOR_API_KEY_FILE=$HOME\.config\programador-instagram\api-key" -- node "$HOME\.claude\skills\publicar\mcp\server.mjs"
+```
+
+**3b. (Opcional) Habilitá `/anuncios`**
+
+```powershell
+New-Item -ItemType Junction -Force -Path "$HOME\.claude\skills\anuncios" -Target "$HOME\.claude\skills\publicar\anuncios" | Out-Null
 ```
 
 **4. Probá** (abajo).
