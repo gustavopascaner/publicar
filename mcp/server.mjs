@@ -125,7 +125,7 @@ const adCampaignSchema = {
             },
             additionalProperties: false,
           },
-          instagramPositions: { type: "array", items: { type: "string", enum: ["stream", "story", "reels", "explore", "explore_home", "profile_feed", "ig_search"] } },
+          instagramPositions: { type: "array", items: { type: "string", enum: ["stream", "story", "reels", "explore_home", "profile_feed", "ig_search"] } },
           pixelId: { type: ["string", "null"] },
           conversionEvent: { type: ["string", "null"], enum: ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATED_CHECKOUT", "CONTACT", "SCHEDULE", "SUBMIT_APPLICATION", "OTHER", null] },
           whatsappPhoneNumber: { type: ["string", "null"], description: "Meta CONVERSATIONS (WhatsApp): número de WhatsApp Business con código de país (ej. +5491122334455). Vacío = el vinculado a la Página." },

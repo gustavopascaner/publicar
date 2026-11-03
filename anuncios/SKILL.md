@@ -32,7 +32,7 @@ Del texto sacar, preguntando solo lo que falte (una pregunta corta con 2–3 opc
   `countries` con códigos de 2 letras (AR, UY…). Regiones/ciudades e intereses: `buscar_segmentacion_ads`
   (`type: "geo"` / `"interest"`, `q`) y usar `key`/`id` con `name`. Públicos personalizados/similares y píxeles:
   `type: "audiences"` / `"pixels"`. Sin datos, proponer algo razonable (país de la cuenta, 25–55, todos) y decirlo.
-- **Ubicaciones** (`instagramPositions`): por defecto `stream`, `story`, `reels`, `explore`. Solo Instagram, siempre.
+- **Ubicaciones** (`instagramPositions`): por defecto `stream`, `story`, `reels` (`explore` ya no existe en Meta desde la API v26; `explore_home` sí). Solo Instagram, siempre.
 - **Creatividad** (`ads[0]`):
   - Publicación ya publicada → `creativeType: "existing_post"` con `postId` (`listar_publicaciones` con
     `status=published`, buscar por `q`; tiene que tener `platformUrl`). Es la opción más simple y la recomendada para
