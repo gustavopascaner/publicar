@@ -34,7 +34,8 @@ const INSTRUCTIONS = `Programador de publicaciones de Instagram (cuentas profesi
 - Publicar es irreversible: confirmá con el usuario cuenta, texto, medios y fecha antes de usar mode "now" o "schedule" si no lo pidió explícitamente.
 - Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video. Portada del Reel (opcional): coverOffsetMs (fotograma, en ms) o coverMediaId (imagen subida con subir_medio).
 - Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.
-- Anuncios (solo si info_api devuelve adsEnabled=true): listar_cuentas_publicitarias → validar_campana_ads → crear_campana_ads (queda como borrador) → publicar_campana_ads (la crea en Meta EN PAUSA; con activate=true la activa al terminar y GASTA DINERO: confirmá siempre presupuesto, moneda y fechas con el usuario antes). Ubicaciones solo de Instagram. ver_campana_ads muestra estado y métricas; pausar_campana_ads la detiene.`;
+- Anuncios (solo si info_api devuelve adsEnabled=true): listar_cuentas_publicitarias → validar_campana_ads → crear_campana_ads (queda como borrador) → publicar_campana_ads (la crea en Meta EN PAUSA; con activate=true la activa al terminar y GASTA DINERO: confirmá siempre presupuesto, moneda y fechas con el usuario antes). Ubicaciones solo de Instagram. ver_campana_ads muestra estado y métricas; pausar_campana_ads la detiene.
+- WhatsApp (clic a WhatsApp): objetivo OUTCOME_LEADS, OUTCOME_ENGAGEMENT, OUTCOME_TRAFFIC u OUTCOME_SALES con optimizationGoal CONVERSATIONS y callToAction WHATSAPP_MESSAGE (sin linkUrl). Plantilla de mensaje: buscar_segmentacion_ads type=welcome_messages (la primera es la más reciente) y pasar su raw en ads[].welcomeMessage. Si una campaña queda "failed" solo con la campaña creada, se corrige con crear_campana_ads (mismo id, mismo objetivo y presupuesto) y se reanuda con publicar_campana_ads.`;
 
 const id = { type: "string", description: "Identificador (uuid)." };
 const mediaItems = {
@@ -127,6 +128,7 @@ const adCampaignSchema = {
           instagramPositions: { type: "array", items: { type: "string", enum: ["stream", "story", "reels", "explore", "explore_home", "profile_feed", "ig_search"] } },
           pixelId: { type: ["string", "null"] },
           conversionEvent: { type: ["string", "null"], enum: ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATED_CHECKOUT", "CONTACT", "SCHEDULE", "SUBMIT_APPLICATION", "OTHER", null] },
+          whatsappPhoneNumber: { type: ["string", "null"], description: "Meta CONVERSATIONS (WhatsApp): número de WhatsApp Business con código de país (ej. +5491122334455). Vacío = el vinculado a la Página." },
           ads: {
             type: "array",
             minItems: 1,
@@ -142,7 +144,20 @@ const adCampaignSchema = {
                 headline: { type: "string" },
                 description: { type: "string" },
                 callToAction: { type: ["string", "null"], description: "LEARN_MORE, SHOP_NOW, SIGN_UP, CONTACT_US, WHATSAPP_MESSAGE, NO_BUTTON…" },
-                linkUrl: { type: ["string", "null"] },
+                linkUrl: { type: ["string", "null"], description: "No hace falta con WHATSAPP_MESSAGE (se usa el enlace de WhatsApp)." },
+                welcomeMessage: {
+                  type: ["object", "null"],
+                  description:
+                    "Solo con callToAction WHATSAPP_MESSAGE: plantilla de mensaje. Para reutilizar la de un anuncio anterior, pasá { raw, sourceName } con el raw que devuelve buscar_segmentacion_ads type=welcome_messages (el primero es el más reciente). Si no, { greeting, autofill } o { greeting, iceBreakers }.",
+                  properties: {
+                    greeting: { type: "string", description: "Saludo que ve la persona al abrir el chat (máx. 300)." },
+                    autofill: { type: "string", description: "Mensaje que queda escrito para que la persona lo mande (máx. 300)." },
+                    iceBreakers: { type: "array", items: { type: "string" }, maxItems: 4, description: "Preguntas frecuentes como botones (reemplazan al mensaje sugerido)." },
+                    raw: { type: ["object", "null"], description: "Plantilla tal cual la devolvió Meta (copiada de un anuncio anterior)." },
+                    sourceName: { type: "string" },
+                  },
+                  additionalProperties: false,
+                },
               },
               required: ["name", "creativeType"],
             },
@@ -322,19 +337,19 @@ export const TOOLS = [
   },
   {
     name: "ver_campana_ads",
-    description: "Detalle de una campaña publicitaria: conjuntos, anuncios, estado en Meta, problemas, gasto y métricas (vida útil y por día).",
+    description: "Detalle de una campaña publicitaria: conjuntos, anuncios, estado en Meta, problemas, gasto y métricas (vida útil y por día). adsManagerUrl (campaña, conjuntos y anuncios) abre el objeto en Ads Manager para verlo o editarlo.",
     inputSchema: { type: "object", properties: { id }, required: ["id"], additionalProperties: false },
     run: (api, a) => api.get(`/ads/campaigns/${encodeURIComponent(a.id)}`),
   },
   {
     name: "buscar_segmentacion_ads",
     description:
-      "Busca en Meta intereses (type=interest, q) o lugares (type=geo, q: país, región o ciudad) para la segmentación, o lista los públicos personalizados/similares (type=audiences) y píxeles (type=pixels) de una cuenta publicitaria. Devuelve ids/keys para usar en targeting.",
+      "Busca en Meta intereses (type=interest, q) o lugares (type=geo, q: país, región o ciudad) para la segmentación, o lista los públicos personalizados/similares (type=audiences) y píxeles (type=pixels) de una cuenta publicitaria. Devuelve ids/keys para usar en targeting. type=welcome_messages: plantillas de mensaje de WhatsApp de los anuncios de la cuenta, la más reciente primero (usar su raw en ads[].welcomeMessage).",
     inputSchema: {
       type: "object",
       properties: {
         adAccountId: { type: "string" },
-        type: { type: "string", enum: ["interest", "geo", "audiences", "pixels"] },
+        type: { type: "string", enum: ["interest", "geo", "audiences", "pixels", "welcome_messages"] },
         q: { type: "string", description: "Texto a buscar (interest y geo; mínimo 2 letras)." },
       },
       required: ["adAccountId", "type"],

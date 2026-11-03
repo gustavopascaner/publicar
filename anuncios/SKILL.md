@@ -20,7 +20,8 @@ nunca tocar Ads Manager, la base ni Meta por otro lado. **Las campañas gastan d
 
 ## 1 · Entender el pedido
 Del texto sacar, preguntando solo lo que falte (una pregunta corta con 2–3 opciones, no un cuestionario):
-- **Objetivo** (`objective`): tráfico a un sitio/WhatsApp → `OUTCOME_TRAFFIC`; más interacción con una publicación →
+- **Objetivo** (`objective`): tráfico a un sitio → `OUTCOME_TRAFFIC`; mensajes/contactos por **WhatsApp** → ver
+  «WhatsApp» abajo; más interacción con una publicación →
   `OUTCOME_ENGAGEMENT`; alcance/visibilidad → `OUTCOME_AWARENESS`; contactos con píxel → `OUTCOME_LEADS`; ventas con
   píxel → `OUTCOME_SALES`. Si pide "promocionar un post" sin más, usar `OUTCOME_ENGAGEMENT` + `POST_ENGAGEMENT`.
 - **Presupuesto**: diario (`dailyBudgetCents`) o total (`lifetimeBudgetCents`, exige `endAt`), en la **unidad mínima
@@ -42,6 +43,15 @@ Del texto sacar, preguntando solo lo que falte (una pregunta corta con 2–3 opc
     por el MCP no la tienen y la validación lo rechaza (`video_thumb`): proponer imagen o publicación existente.
   - Botón (`callToAction`, p. ej. `LEARN_MORE`, `SHOP_NOW`, `SIGN_UP`, `CONTACT_US`, `WHATSAPP_MESSAGE`, `NO_BUTTON`) y
     `linkUrl` (obligatorio en tráfico, leads y ventas salvo WhatsApp).
+- **WhatsApp** ("clientes potenciales / conversiones en WhatsApp", "que escriban por WhatsApp"):
+  `objective: "OUTCOME_LEADS"` (o `OUTCOME_ENGAGEMENT` si pide interacción), `optimizationGoal: "CONVERSATIONS"`,
+  `callToAction: "WHATSAPP_MESSAGE"` en cada anuncio y **sin** `linkUrl`. El número es el de WhatsApp Business vinculado a
+  la Página de la cuenta que anuncia; si Gus da otro, `whatsappPhoneNumber` en el conjunto (con código de país).
+  **Plantilla de mensaje** (`ads[].welcomeMessage`): si pide "la última que usé" o "la plantilla predeterminada",
+  `buscar_segmentacion_ads` con `type: "welcome_messages"` → la primera es la más reciente; pasar
+  `{ raw: <su raw>, sourceName: <su name> }` y mostrar en el resumen su saludo y mensaje. Si no hay ninguna, avisar y
+  ofrecer escribirla: `{ greeting, autofill }` (saludo + mensaje que la persona manda) o `{ greeting, iceBreakers }`
+  (hasta 4 preguntas). Sin plantilla, Meta usa su saludo por defecto (la validación lo avisa).
 - Nombre de campaña, conjunto y anuncio: proponerlos a partir del pedido ("Promo turnos · nov 2026").
 
 ## 2 · Validar
@@ -59,7 +69,7 @@ Objetivo: Tráfico · optimiza clics en el enlace · se cobra por impresiones
 Presupuesto: ARS 5.000 por día, del 3/11 09:00 al 17/11 (gasto máximo estimado ARS 70.000)   ← si no hay fin: "sin fecha de fin: gasta hasta que la pauses"
 Público: 25–55 · todos · Argentina (Rosario) · intereses: Odontología
 Ubicaciones: feed, historias, reels, explorar (solo Instagram)
-Anuncio: publicación del 20/10 «…» · botón Más información → https://…
+Anuncio: publicación del 20/10 «…» · botón Más información → https://…   ← WhatsApp: "botón WhatsApp · plantilla «saludo» / «mensaje»"
 Se crea EN PAUSA (no gasta). ¿La activo al terminar? (sí / no)
 ```
 No saltear nunca esta confirmación, aunque el mensaje diga "directo": acá hay dinero.
@@ -68,7 +78,9 @@ No saltear nunca esta confirmación, aunque el mensaje diga "directo": acá hay 
 1. `crear_campana_ads` (borrador; devuelve `campaign.id`). Si la respuesta trae `issues` con errores, volver al paso 2.
 2. `publicar_campana_ads` con `id` y `activate` según lo confirmado (**por defecto `false`**). Corre en segundo plano.
 3. Esperar unos segundos y `ver_campana_ads` hasta que `status` sea `paused` o `active` (o `failed`: mostrar
-   `lastError` con sus palabras; si es de límite de llamadas de Meta, `#4`/`#80004`, esperar y reintentar más tarde con
+   `lastError` con sus palabras (trae la explicación de Meta). Si falló con la campaña ya creada pero sin conjuntos, se
+   corrige con `crear_campana_ads` pasando el mismo `id` (mismo objetivo y presupuesto) y se reanuda con
+   `publicar_campana_ads`: no duplica la campaña en Meta; si es de límite de llamadas de Meta, `#4`/`#80004`, esperar y reintentar más tarde con
    `publicar_campana_ads` otra vez: no repite lo ya creado). Máximo ~2 minutos de espera; si sigue `publishing`, avisar
    que termina sola y que se ve en https://publicar.misterrobot.net/anuncios.
 4. Informar en 2 líneas: estado, `platformId`, presupuesto, y el enlace `https://publicar.misterrobot.net/anuncios/<id>`.
