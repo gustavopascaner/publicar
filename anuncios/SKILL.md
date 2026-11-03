@@ -45,8 +45,9 @@ Del texto sacar, preguntando solo lo que falte (una pregunta corta con 2–3 opc
     `linkUrl` (obligatorio en tráfico, leads y ventas salvo WhatsApp).
 - **WhatsApp** ("clientes potenciales / conversiones en WhatsApp", "que escriban por WhatsApp"):
   `objective: "OUTCOME_LEADS"` (o `OUTCOME_ENGAGEMENT` si pide interacción), `optimizationGoal: "CONVERSATIONS"`,
-  `callToAction: "WHATSAPP_MESSAGE"` en cada anuncio y **sin** `linkUrl`. El número es el de WhatsApp Business vinculado a
-  la Página de la cuenta que anuncia; si Gus da otro, `whatsappPhoneNumber` en el conjunto (con código de país).
+  `callToAction: "WHATSAPP_MESSAGE"` en cada anuncio y **sin** `linkUrl`. **No pedir el número**: la app lo toma
+  sola de los anuncios anteriores con WhatsApp de la cuenta (o de la Página). Solo si Gus da otro, `whatsappPhoneNumber`
+  en el conjunto (con código de país). Si Meta igual dice que la Página no tiene WhatsApp, el error indica qué Página se usó.
   **Plantilla de mensaje** (`ads[].welcomeMessage`): si pide "la última que usé" o "la plantilla predeterminada",
   `buscar_segmentacion_ads` con `type: "welcome_messages"` → la primera es la más reciente; pasar
   `{ raw: <su raw>, sourceName: <su name> }` y mostrar en el resumen su saludo y mensaje. Si no hay ninguna, avisar y
