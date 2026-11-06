@@ -18,11 +18,17 @@ Anda en macOS, Linux y Windows.
 
 ## /anuncios — campañas publicitarias (opcional)
 
-La carpeta `anuncios/` trae una segunda skill, `/anuncios`, que usa el mismo servidor MCP para armar campañas
-publicitarias de Meta con ubicaciones **solo en Instagram** (promocionar una publicación ya publicada o una imagen /
-carrusel de la biblioteca): elige cuenta publicitaria, objetivo, presupuesto y público, valida, muestra el gasto
-estimado, pide confirmación y la crea **en pausa**; solo la activa si lo pedís. También pausa y muestra métricas.
-Requiere que un administrador tenga habilitada la sección Anuncios en la app (`ADS_ENABLED`).
+La carpeta `anuncios/` trae una segunda skill, `/anuncios`, que usa el **MCP oficial de Meta Ads** (herramientas `ads_*`)
+para armar campañas con ubicaciones **solo en Instagram** (una publicación ya publicada, o imagen, carrusel o video locales):
+elige cuenta publicitaria, objetivo, presupuesto y público, muestra el gasto estimado, pide confirmación y la deja **como
+borrador** en Ads Manager; solo la publica si lo pedís. También pausa, edita y muestra métricas.
+
+Los archivos locales llegan a Meta con un enlace temporal: `anuncios/scripts/enlace_temporal.py` los sube por FTPS a
+`landing.misterrobot.net/_tmp-anuncios/` y los borra del servidor cuando Meta ya los tiene.
+
+Requiere el conector de Meta Ads conectado y, para subir archivos locales, la skill `/marca` instalada con la contraseña
+FTP en el Llavero (`subir.py clave`, ver su README). La búsqueda de ciudades e intereses sigue usando el servidor
+`programador-instagram`.
 
 ```
 /anuncios promocioná el post del lunes de @cuenta con ARS 3000 por día durante una semana
