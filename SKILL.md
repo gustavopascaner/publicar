@@ -1,6 +1,6 @@
 ---
 name: publicar
-description: Programa, publica o gestiona publicaciones de Instagram en el Programador de Mister Robot (publicar.misterrobot.net) con el servidor MCP programador-instagram. Sube fotos/videos locales o por URL, arma imagen/carrusel/Reel, escribe o usa el texto, valida con las reglas de Instagram, confirma y programa (fecha, cola o ya). También lista lo programado, reprograma, pasa a borrador, reintenta o borra, y dice qué archivos de una carpeta ya se publicaron (los marca en el Finder o en una planilla). Usar cuando el usuario escribe /publicar, o pide "programá esto en @cuenta…", "subí este reel para el jueves", "qué tengo programado", "mové / cancelá la publicación de…", "qué videos de esta carpeta ya publiqué".
+description: Programa, publica o gestiona publicaciones de Instagram en el Programador de Mister Robot (publicar.misterrobot.net) con el servidor MCP programador-instagram. Sube fotos/videos locales o por URL, arma imagen/carrusel/Reel/historia, escribe o usa el texto, valida con las reglas de Instagram, confirma y programa (fecha, cola o ya). También lista lo programado, reprograma, pasa a borrador, reintenta o borra, y dice qué archivos de una carpeta ya se publicaron (los marca en el Finder o en una planilla). Usar cuando el usuario escribe /publicar, o pide "programá esto en @cuenta…", "subí este reel para el jueves", "programá esta historia", "qué tengo programado", "mové / cancelá la publicación de…", "qué videos de esta carpeta ya publiqué".
 ---
 
 # /publicar — programar contenido en Instagram
@@ -25,7 +25,9 @@ Del texto de `/publicar …` sacar:
   `publishable=false` → avisar ("requiere reconexión / sin acceso": hay que reconectarla en la app) y no programarla.
 - **Medios**: rutas locales (archivo o carpeta), URLs https o ids ya subidos (`listar_medios`). Carpeta → imágenes y
   videos ordenados por nombre. Tipo: 1 imagen = imagen; 2–10 = carrusel; 1 video = Reel. Más de 10 → preguntar cómo
-  dividir.
+  dividir. **Historia** solo si Gus lo dice ("historia", "story"): `isStory: true` con 1 imagen o 1 video de 3 a 60 s
+  (ideal 9:16); sin texto, sin portada, sin stickers ni enlaces, vence a las 24 h. Varias historias = una
+  `crear_publicacion` por archivo (escalonar unos minutos si van seguidas para respetar el orden).
 - **Texto**: si Gus lo da, usarlo **tal cual**. Si da una idea/brief, redactarlo (voseo, claro, con CTA; hashtags solo si
   los pide o el tono de la cuenta los usa; ≤ 2200 caracteres, ≤ 30 hashtags, ≤ 20 menciones) y mostrarlo para aprobar.
 - **Cuándo** → `mode`:
@@ -35,6 +37,7 @@ Del texto de `/publicar …` sacar:
   - sin fecha ni indicación → `draft` y avisar que quedó como borrador.
 - Extras: `altText` por imagen si lo da, `tags` internos, `campaignId` (`listar_campanas`), `shareToFeed` (Reels).
 - **Portada (obligatoria: siempre se elige una al publicar o programar, también `draft` y `queue`)**:
+  - **Historia**: no lleva portada ni texto (no mandar `caption`, `coverOffsetMs` ni `coverMediaId`).
   - **Reel**: mandar siempre `coverOffsetMs` (segundo del video en ms: "portada en el segundo 4" → 4000) o
     `coverMediaId` (id de una imagen subida con `subir_medio`; gana si van las dos). Nunca dejar que Instagram elija.
     Si Gus indica la portada (segundo o imagen), usar esa. Si no, elegirla vos: ver «Elegir la portada» abajo.
