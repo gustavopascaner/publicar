@@ -36,6 +36,10 @@ Del texto de `/publicar …` sacar:
   - "ya", "ahora" → `now`;
   - sin fecha ni indicación → `draft` y avisar que quedó como borrador.
 - Extras: `altText` por imagen si lo da, `tags` internos, `campaignId` (`listar_campanas`), `shareToFeed` (Reels).
+- **Reel de prueba** (trial reel): por defecto todo Reel va **normal y en el feed** (no mandar `trialReel`). Solo si Gus
+  dice explícitamente "de prueba" / "trial": `trialReel: true`, que lo muestra solo a no seguidores (no va al feed ni a la
+  grilla). Graduación: `trialGraduation: "MANUAL"` por defecto (se pasa a los seguidores a mano desde la app); usar
+  `"SS_PERFORMANCE"` solo si pide explícitamente que pase solo / automático. Solo Reels (1 video, no historias).
 - **Portada (obligatoria: siempre se elige una al publicar o programar, también `draft` y `queue`)**:
   - **Historia**: no lleva portada ni texto (no mandar `caption`, `coverOffsetMs` ni `coverMediaId`).
   - **Reel**: mandar siempre `coverOffsetMs` (segundo del video en ms: "portada en el segundo 4" → 4000) o
@@ -77,6 +81,7 @@ Publicar es público e irreversible. Mostrar un resumen y esperar un sí:
 ```
 @cuenta · Carrusel (3 fotos) · jueves 30/10 18:00 (hora de Buenos Aires)
 Portada: foto 1 (nombre) · en Reels: «seg. 3,2 del video» o la imagen elegida
+Reel de prueba: graduación manual (solo si lo pidió; si no, omitir la línea)
 Texto: «…» (primeras líneas)
 ```
 

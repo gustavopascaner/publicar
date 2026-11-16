@@ -33,6 +33,7 @@ const INSTRUCTIONS = `Programador de publicaciones de Instagram (cuentas profesi
 - Flujo típico: listar_cuentas → subir_medio (archivo local o URL) → validar_publicacion → crear_publicacion (mode "schedule" con scheduledAt, "queue" para el próximo horario libre de la cola, "now" para publicar ya o "draft").
 - Publicar es irreversible: confirmá con el usuario cuenta, texto, medios y fecha antes de usar mode "now" o "schedule" si no lo pidió explícitamente.
 - Imagen = 1 medio; carrusel = 2 a 10 medios; Reel = 1 video; historia = isStory true con 1 imagen o 1 video de 3 a 60 s (sin texto, vence a las 24 h; se programa igual que el resto). Portada del Reel (opcional): coverOffsetMs (fotograma, en ms) o coverMediaId (imagen subida con subir_medio).
+- Reel de prueba (trial reel): solo si el usuario lo pide explícitamente, trialReel true (si no, va como Reel normal y en el feed). Lo ven solo no seguidores y no va al feed. trialGraduation "MANUAL" (por defecto: se pasa a los seguidores a mano desde la app) o "SS_PERFORMANCE" (solo si el usuario lo pide: Instagram lo pasa solo si le va bien).
 - Antes de subir un archivo local, estado_archivo dice si ya se publicó o programó (y en qué cuenta); después de programar o publicar, volver a llamarlo deja marcado el archivo.
 - Anuncios (solo si info_api devuelve adsEnabled=true): listar_cuentas_publicitarias → validar_campana_ads → crear_campana_ads (queda como borrador) → publicar_campana_ads (la crea en Meta EN PAUSA; con activate=true la activa al terminar y GASTA DINERO: confirmá siempre presupuesto, moneda y fechas con el usuario antes). Ubicaciones solo de Instagram. ver_campana_ads muestra estado y métricas; pausar_campana_ads la detiene.
 - WhatsApp (clic a WhatsApp): objetivo OUTCOME_LEADS, OUTCOME_ENGAGEMENT, OUTCOME_TRAFFIC u OUTCOME_SALES con optimizationGoal CONVERSATIONS y callToAction WHATSAPP_MESSAGE (sin linkUrl). Plantilla de mensaje: buscar_segmentacion_ads type=welcome_messages (la primera es la más reciente) y pasar su raw en ads[].welcomeMessage. Si una campaña queda "failed" solo con la campaña creada, se corrige con crear_campana_ads (mismo id, mismo objetivo y presupuesto) y se reanuda con publicar_campana_ads.`;
@@ -78,6 +79,17 @@ const postProps = {
   campaignId: { type: ["string", "null"], description: "Campaña (ver listar_campanas)." },
   shareToFeed: { type: "boolean", description: "Solo Reels: mostrarlo también en el feed (por defecto sí)." },
   isStory: { type: "boolean", description: "true = historia (1 imagen JPEG o 1 video de 3 a 60 s, ideal 9:16; sin descripción, vence a las 24 h). Por defecto false." },
+  trialReel: {
+    type: "boolean",
+    description:
+      "Solo Reels: true = Reel de prueba (lo ven solo no seguidores; no va al feed ni a la grilla). Por defecto false (Reel normal). Usar true SOLO si el usuario lo pide explícitamente.",
+  },
+  trialGraduation: {
+    type: "string",
+    enum: ["MANUAL", "SS_PERFORMANCE"],
+    description:
+      "Solo con trialReel true. MANUAL (por defecto) = se pasa a los seguidores a mano desde la app de Instagram; SS_PERFORMANCE = Instagram lo pasa solo si le va bien (usar SOLO si el usuario pide que sea automático).",
+  },
   ...coverProps,
 };
 
@@ -228,7 +240,7 @@ export const TOOLS = [
   {
     name: "validar_publicacion",
     description: "Revisa texto y medios con las reglas de Instagram sin guardar nada. Devuelve errores (bloquean) y advertencias.",
-    inputSchema: { type: "object", properties: { caption: postProps.caption, media: mediaItems, isStory: postProps.isStory, ...coverProps }, additionalProperties: false },
+    inputSchema: { type: "object", properties: { caption: postProps.caption, media: mediaItems, isStory: postProps.isStory, trialReel: postProps.trialReel, ...coverProps }, additionalProperties: false },
     run: (api, a) => api.post("/posts/validate", a),
   },
   {
